@@ -1,16 +1,16 @@
-import { useNavigate } from 'react-router-dom'
+import { useNavigate } from 'react-router-dom';
 
-import { useAuth } from '../../contexts/AuthContext'
+import { useAuth } from '../../contexts/AuthContext';
 
 export function Home() {
-  const { logout } = useAuth()
+  const { logout } = useAuth();
 
-  const navigate = useNavigate()
+  const navigate = useNavigate();
 
   function handleLogout() {
-    logout()
+    logout();
 
-    navigate('/')
+    navigate('/');
   }
 
   return (
@@ -27,9 +27,7 @@ export function Home() {
     >
       <h1>Bem-vindo ao Chronos Pomodoro</h1>
 
-      <p>
-        O tempo agora está do seu lado.
-      </p>
+      <p>O tempo agora está do seu aliado.</p>
 
       <button
         onClick={handleLogout}
@@ -47,5 +45,5 @@ export function Home() {
         Sair
       </button>
     </div>
-  )
+  );
 }
