@@ -1,58 +1,73 @@
-import {
-  createContext,
-  useContext,
-  useEffect,
-  useReducer,
-} from 'react'
+import { createContext, useContext, useEffect, useReducer } from 'react';
 
-import { authReducer } from './authReducer'
+import { api } from '../services/api';
+import { authReducer } from './authReducer';
 
-const AuthContext = createContext({})
+const AuthContext = createContext({});
 
 const initialState = {
   isAuthenticated: false,
-}
+  isLoading: true,
+  user: null,
+};
 
 export function AuthContextProvider({ children }) {
-  const [state, dispatch] = useReducer(authReducer, initialState)
+  const [state, dispatch] = useReducer(authReducer, initialState);
 
   useEffect(() => {
-    const storedAuth = sessionStorage.getItem('auth')
-
-    if (storedAuth === 'true') {
-      dispatch({ type: 'LOGIN' })
+    async function loadUser() {
+      try {
+        const data = await api.me();
+        dispatch({ type: 'LOGIN', payload: data.user });
+      } catch (error) {
+        dispatch({ type: 'LOGOUT' });
+      }
     }
-  }, [])
 
-  function login() {
-    sessionStorage.setItem('auth', 'true')
+    loadUser();
+  }, []);
 
-    dispatch({
-      type: 'LOGIN',
-    })
+  async function login(username, password) {
+    const data = await api.login({ username, password });
+    dispatch({ type: 'LOGIN', payload: data.user });
+    return data;
   }
 
-  function logout() {
-    sessionStorage.removeItem('auth')
+  async function register(name, email, username, password) {
+    return api.register({ name, email, username, password });
+  }
 
-    dispatch({
-      type: 'LOGOUT',
-    })
+  async function logout() {
+    await api.logout();
+    dispatch({ type: 'LOGOUT' });
+  }
+
+  async function forgotPassword(email) {
+    return api.forgotPassword({ email });
+  }
+
+  async function resetPassword(token, password) {
+    return api.resetPassword({ token, password });
   }
 
   return (
     <AuthContext.Provider
       value={{
         isAuthenticated: state.isAuthenticated,
+        isLoading: state.isLoading,
+        user: state.user,
         login,
         logout,
+        register,
+        forgotPassword,
+        resetPassword,
       }}
     >
       {children}
     </AuthContext.Provider>
-  )
+  );
 }
 
 export function useAuth() {
-  return useContext(AuthContext)
+  return useContext(AuthContext);
 }

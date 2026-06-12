@@ -1,71 +1,136 @@
-import { useEffect, useRef, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useEffect, useRef, useState } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 
-import { MOCK_USER } from '../../mocks/auth'
-import { useAuth } from '../../contexts/AuthContext'
-
-import styles from './styles.module.css'
+import { useAuth } from '../../context/AuthContext';
+import styles from './styles.module.css';
 
 export function LoginForm() {
-  const [username, setUsername] = useState('')
-  const [password, setPassword] = useState('')
-  const [message, setMessage] = useState('')
-  const [viewMode, setViewMode] = useState('login')
-  const [isSubmitting, setIsSubmitting] = useState(false)
+  const [username, setUsername] = useState('');
+  const [password, setPassword] = useState('');
+  const [email, setEmail] = useState('');
+  const [name, setName] = useState('');
+  const [token, setToken] = useState('');
+  const [viewMode, setViewMode] = useState('login');
+  const [message, setMessage] = useState('');
+  const [messageType, setMessageType] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const inputRef = useRef(null)
+  const inputRef = useRef(null);
 
-  const navigate = useNavigate()
+  const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
 
-  const { login } = useAuth()
+  const { login, register, forgotPassword, resetPassword } = useAuth();
 
   useEffect(() => {
-    inputRef.current?.focus()
-  }, [])
+    inputRef.current?.focus();
+  }, [viewMode]);
+
+  useEffect(() => {
+    const resetToken = searchParams.get('resetToken');
+
+    if (resetToken) {
+      setViewMode('reset');
+      setToken(resetToken);
+    }
+  }, [searchParams]);
 
   useEffect(() => {
     if (message) {
       const timer = setTimeout(() => {
-        setMessage('')
-      }, 3000)
+        setMessage('');
+      }, 4000);
 
-      return () => clearTimeout(timer)
+      return () => clearTimeout(timer);
     }
-  }, [message])
+  }, [message]);
 
-  function handleLogin(event) {
-    event.preventDefault()
+  async function handleLogin(event) {
+    event.preventDefault();
+    setIsSubmitting(true);
 
-    setIsSubmitting(true)
-
-    setTimeout(() => {
-      if (
-        username === MOCK_USER.username &&
-        password === MOCK_USER.password
-      ) {
-        login()
-
-        setMessage('Login realizado com sucesso!')
-
-        navigate('/home')
-      } else {
-        setMessage('Usuário ou senha inválidos.')
-      }
-
-      setIsSubmitting(false)
-    }, 800)
+    try {
+      await login(username.trim(), password);
+      setMessageType('success');
+      setMessage('Login realizado com sucesso!');
+      navigate('/home');
+    } catch (error) {
+      setMessageType('error');
+      setMessage(error?.error || 'Usuário ou senha inválidos.');
+    } finally {
+      setIsSubmitting(false);
+    }
   }
 
-  function handleRegister() {
-    setViewMode('register')
+  async function handleRegister(event) {
+    event.preventDefault();
+    setIsSubmitting(true);
 
-    setMessage('Tela de cadastro em desenvolvimento.')
+    try {
+      await register(name.trim(), email.trim(), username.trim(), password);
+      setMessageType('success');
+      setMessage('Conta criada com sucesso! Faça login para continuar.');
+      setViewMode('login');
+    } catch (error) {
+      setMessageType('error');
+      setMessage(error?.error || 'Erro ao cadastrar usuário.');
+    } finally {
+      setIsSubmitting(false);
+    }
   }
 
-  function handleRecoverPassword() {
-    setViewMode('recover')
+  async function handleForgotPassword(event) {
+    event.preventDefault();
+    setIsSubmitting(true);
 
-    setMessage('Tela de recuperação em desenvolvimento.')
+    try {
+      const result = await forgotPassword(email.trim());
+      setMessageType('success');
+      setMessage(
+        result.resetToken
+          ? `Token gerado: ${result.resetToken}`
+          : 'Se o e-mail existir no sistema, um token foi enviado.',
+      );
+    } catch (error) {
+      setMessageType('error');
+      setMessage(error?.error || 'Erro ao solicitar recuperação de senha.');
+    } finally {
+      setIsSubmitting(false);
+    }
+  }
+
+  async function handleResetPassword(event) {
+    event.preventDefault();
+    setIsSubmitting(true);
+
+    try {
+      await resetPassword(token.trim(), password);
+      setMessageType('success');
+      setMessage('Senha redefinida com sucesso! Faça login para continuar.');
+      setViewMode('login');
+      setPassword('');
+      setToken('');
+    } catch (error) {
+      setMessageType('error');
+      setMessage(error?.error || 'Erro ao redefinir a senha.');
+    } finally {
+      setIsSubmitting(false);
+    }
+  }
+
+  function showRegister() {
+    setViewMode('register');
+    setMessage('');
+  }
+
+  function showRecoverPassword() {
+    setViewMode('recover');
+    setMessage('');
+  }
+
+  function showLogin() {
+    setViewMode('login');
+    setMessage('');
   }
 
   return (
@@ -77,78 +142,174 @@ export function LoginForm() {
           O tempo passa... mas seus objetivos não precisam ficar para trás.
         </p>
 
-        <form onSubmit={handleLogin}>
-          <div className={styles.inputGroup}>
-            <label htmlFor="username">Usuário</label>
+        {viewMode === 'login' && (
+          <form onSubmit={handleLogin}>
+            <div className={styles.inputGroup}>
+              <label htmlFor='username'>Usuário ou e-mail</label>
 
-            <input
-              ref={inputRef}
-              id="username"
-              type="text"
-              value={username}
-              onChange={(event) => setUsername(event.target.value)}
-              placeholder="Digite seu usuário"
-            />
-          </div>
+              <input
+                ref={inputRef}
+                id='username'
+                type='text'
+                value={username}
+                onChange={event => setUsername(event.target.value)}
+                placeholder='Digite seu usuário ou e-mail'
+              />
+            </div>
 
-          <div className={styles.inputGroup}>
-            <label htmlFor="password">Senha</label>
+            <div className={styles.inputGroup}>
+              <label htmlFor='password'>Senha</label>
 
-            <input
-              id="password"
-              type="password"
-              value={password}
-              onChange={(event) => setPassword(event.target.value)}
-              placeholder="Digite sua senha"
-            />
-          </div>
+              <input
+                id='password'
+                type='password'
+                value={password}
+                onChange={event => setPassword(event.target.value)}
+                placeholder='Digite sua senha'
+              />
+            </div>
 
-          <button type="submit" disabled={isSubmitting}>
-            {isSubmitting ? 'Entrando...' : 'Entrar'}
-          </button>
-        </form>
-
-        <div className={styles.links}>
-          <button type="button" onClick={handleRegister}>
-            Não tem conta? Cadastre-se
-          </button>
-
-          <button type="button" onClick={handleRecoverPassword}>
-            Esqueci minha senha
-          </button>
-        </div>
-
-        {message && (
-          <div className={styles.message}>
-            <p>{message}</p>
-          </div>
+            <button type='submit' disabled={isSubmitting}>
+              {isSubmitting ? 'Entrando...' : 'Entrar'}
+            </button>
+          </form>
         )}
 
         {viewMode === 'register' && (
-          <div className={styles.viewModeBox}>
-            <h3>Cadastro</h3>
+          <form onSubmit={handleRegister}>
+            <div className={styles.inputGroup}>
+              <label htmlFor='name'>Nome completo</label>
 
-            <p>
-              Futuramente você poderá criar sua conta aqui.
-            </p>
-          </div>
+              <input
+                ref={inputRef}
+                id='name'
+                type='text'
+                value={name}
+                onChange={event => setName(event.target.value)}
+                placeholder='Digite seu nome'
+              />
+            </div>
+
+            <div className={styles.inputGroup}>
+              <label htmlFor='email'>E-mail</label>
+
+              <input
+                id='email'
+                type='email'
+                value={email}
+                onChange={event => setEmail(event.target.value)}
+                placeholder='Digite seu e-mail'
+              />
+            </div>
+
+            <div className={styles.inputGroup}>
+              <label htmlFor='usernameRegister'>Usuário</label>
+
+              <input
+                id='usernameRegister'
+                type='text'
+                value={username}
+                onChange={event => setUsername(event.target.value)}
+                placeholder='Escolha um usuário'
+              />
+            </div>
+
+            <div className={styles.inputGroup}>
+              <label htmlFor='passwordRegister'>Senha</label>
+
+              <input
+                id='passwordRegister'
+                type='password'
+                value={password}
+                onChange={event => setPassword(event.target.value)}
+                placeholder='Escolha uma senha'
+              />
+            </div>
+
+            <button type='submit' disabled={isSubmitting}>
+              {isSubmitting ? 'Criando...' : 'Cadastrar'}
+            </button>
+          </form>
         )}
 
         {viewMode === 'recover' && (
-          <div className={styles.viewModeBox}>
-            <h3>Recuperar Senha</h3>
+          <form onSubmit={handleForgotPassword}>
+            <div className={styles.inputGroup}>
+              <label htmlFor='emailRecover'>E-mail cadastrado</label>
 
-            <p>
-              Fluxo de recuperação será implementado futuramente.
-            </p>
-          </div>
+              <input
+                ref={inputRef}
+                id='emailRecover'
+                type='email'
+                value={email}
+                onChange={event => setEmail(event.target.value)}
+                placeholder='Digite seu e-mail'
+              />
+            </div>
+
+            <button type='submit' disabled={isSubmitting}>
+              {isSubmitting ? 'Enviando...' : 'Enviar token'}
+            </button>
+          </form>
         )}
 
-        <div className={styles.credentials}>
-          <span>Usuário: chronos</span>
-          <span>Senha: 123456</span>
+        {viewMode === 'reset' && (
+          <form onSubmit={handleResetPassword}>
+            <div className={styles.inputGroup}>
+              <label htmlFor='resetToken'>Token de redefinição</label>
+
+              <input
+                ref={inputRef}
+                id='resetToken'
+                type='text'
+                value={token}
+                onChange={event => setToken(event.target.value)}
+                placeholder='Cole o token recebido'
+              />
+            </div>
+
+            <div className={styles.inputGroup}>
+              <label htmlFor='passwordReset'>Nova senha</label>
+
+              <input
+                id='passwordReset'
+                type='password'
+                value={password}
+                onChange={event => setPassword(event.target.value)}
+                placeholder='Digite a nova senha'
+              />
+            </div>
+
+            <button type='submit' disabled={isSubmitting}>
+              {isSubmitting ? 'Redefinindo...' : 'Redefinir senha'}
+            </button>
+          </form>
+        )}
+
+        <div className={styles.links}>
+          {viewMode !== 'login' ? (
+            <button type='button' onClick={showLogin}>
+              Voltar ao login
+            </button>
+          ) : (
+            <>
+              <button type='button' onClick={showRegister}>
+                Não tem conta? Cadastre-se
+              </button>
+
+              <button type='button' onClick={showRecoverPassword}>
+                Esqueci minha senha
+              </button>
+            </>
+          )}
         </div>
+
+        {message && (
+          <div className={`${styles.message} ${styles[messageType]}`}>
+            <p>{message}</p>
+          </div>
+        )}
       </div>
     </div>
-  )
+  );
 }

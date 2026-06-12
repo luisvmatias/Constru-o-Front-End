@@ -1,12 +1,18 @@
-import { Navigate } from 'react-router-dom'
-import { useAuth } from '../../contexts/AuthContext'
+import { Navigate } from 'react-router-dom';
+import { useAuth } from '../../context/AuthContext';
 
 export function ProtectedRoute({ children }) {
-  const { isAuthenticated } = useAuth()
+  const { isAuthenticated, isLoading } = useAuth();
 
-  if (!isAuthenticated) {
-    return <Navigate to="/" />
+  if (isLoading) {
+    return (
+      <div style={{ padding: '32px', textAlign: 'center' }}>Carregando...</div>
+    );
   }
 
-  return children
+  if (!isAuthenticated) {
+    return <Navigate to='/' />;
+  }
+
+  return children;
 }
