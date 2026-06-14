@@ -41,6 +41,36 @@ Copie `.env.example` para `.env` e preencha os valores. O backend espera um MySQ
    - cole o token em `Redefinir senha` e informe a nova senha
 5. Para encerrar sessão, use o botão `Logout` na tela inicial.
 
+## Resumo do que foi entregue
+
+- Backend Express com autenticação JWT baseada em cookie HTTP-only.
+- Prisma ORM configurado para MySQL com modelos `User`, `Setting` e `Task`.
+- Endpoints:
+  - `POST /api/auth/register`
+  - `POST /api/auth/login`
+  - `POST /api/auth/logout`
+  - `GET /api/auth/me`
+  - `POST /api/auth/forgot-password`
+  - `POST /api/auth/reset-password`
+  - `GET /api/tasks`
+  - `POST /api/tasks`
+  - `PUT /api/tasks/:id`
+  - `GET /api/settings`
+  - `PUT /api/settings`
+- Frontend integrado via proxy Vite para `http://localhost:4000`.
+- Requisições do frontend usam `credentials: include` para compartilhar a sessão por cookie.
+
+## Checklist de validação
+
+- [ ] `npm install` no backend e frontend
+- [ ] `cp backend/.env.example backend/.env` e configurar `DATABASE_URL`
+- [ ] `npx prisma generate` e `npx prisma db push`
+- [ ] `npm start` no backend e `npm run dev` no frontend
+- [ ] Cadastrar novo usuário e fazer login
+- [ ] Acessar tarefas e configurações protegidas após login
+- [ ] Testar logout e recarregar a página para garantir que a sessão expire
+- [ ] Testar recuperação de senha e redefinição de senha
+
 ## Como funciona
 
 O backend usa Express para a API e Prisma como ORM para MySQL. O Prisma gera o client a partir do arquivo `prisma/schema.prisma`.
