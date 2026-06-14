@@ -3,24 +3,26 @@ import cors from "cors";
 import bcrypt from "bcrypt";
 import jwt from "jsonwebtoken";
 import cookieParser from "cookie-parser";
-import mysql from "mysql2/promise";
-import crypto from "crypto";
 import dotenv from "dotenv";
+import { PrismaClient } from "@prisma/client";
+import crypto from "crypto";
 
 dotenv.config();
 
 const {
-  DB_HOST = "localhost",
-  DB_PORT = "3306",
-  DB_USER = "root",
-  DB_PASSWORD = "",
-  DB_NAME = "chronosdb",
+  DATABASE_URL,
   JWT_SECRET = "change_this_secret",
   CLIENT_URL = "http://localhost:5173",
   PORT = "4000",
 } = process.env;
 
+if (!DATABASE_URL) {
+  throw new Error("A variável DATABASE_URL não está definida no .env");
+}
+
+const prisma = new PrismaClient();
 const app = express();
+
 app.use(express.json());
 app.use(cookieParser());
 app.use(
@@ -31,73 +33,6 @@ app.use(
 );
 
 const authCookieName = "chronos_token";
-
-async function ensureDatabase() {
-  const connection = await mysql.createConnection({
-    host: DB_HOST,
-    port: Number(DB_PORT),
-    user: DB_USER,
-    password: DB_PASSWORD,
-  });
-
-  await connection.query(
-    `CREATE DATABASE IF NOT EXISTS \`${DB_NAME}\` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci`,
-  );
-  await connection.end();
-}
-
-await ensureDatabase();
-
-const db = mysql.createPool({
-  host: DB_HOST,
-  port: Number(DB_PORT),
-  user: DB_USER,
-  password: DB_PASSWORD,
-  database: DB_NAME,
-  waitForConnections: true,
-  connectionLimit: 10,
-});
-
-async function ensureTables() {
-  await db.execute(`
-    CREATE TABLE IF NOT EXISTS users (
-      id INT PRIMARY KEY AUTO_INCREMENT,
-      username VARCHAR(60) NOT NULL UNIQUE,
-      email VARCHAR(255) NOT NULL UNIQUE,
-      name VARCHAR(100) NOT NULL,
-      password_hash VARCHAR(255) NOT NULL,
-      reset_token VARCHAR(255) DEFAULT NULL,
-      reset_token_expires DATETIME DEFAULT NULL,
-      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-    ) ENGINE=InnoDB;
-  `);
-
-  await db.execute(`
-    CREATE TABLE IF NOT EXISTS settings (
-      id INT PRIMARY KEY AUTO_INCREMENT,
-      user_id INT NOT NULL,
-      focus_minutes INT NOT NULL DEFAULT 25,
-      break_minutes INT NOT NULL DEFAULT 5,
-      long_break_minutes INT NOT NULL DEFAULT 15,
-      notifications_enabled TINYINT(1) NOT NULL DEFAULT 1,
-      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
-    ) ENGINE=InnoDB;
-  `);
-
-  await db.execute(`
-    CREATE TABLE IF NOT EXISTS tasks (
-      id INT PRIMARY KEY AUTO_INCREMENT,
-      user_id INT NOT NULL,
-      title VARCHAR(255) NOT NULL,
-      completed TINYINT(1) NOT NULL DEFAULT 0,
-      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
-    ) ENGINE=InnoDB;
-  `);
-}
-
-await ensureTables();
 
 function createToken(user) {
   return jwt.sign(
@@ -142,34 +77,36 @@ app.post("/api/auth/register", async (req, res) => {
     return res.status(400).json({ error: "Todos os campos são obrigatórios." });
   }
 
-  const [existing] = await db.query(
-    "SELECT id FROM users WHERE username = ? OR email = ?",
-    [username, email],
-  );
+  const existingUser = await prisma.user.findFirst({
+    where: {
+      OR: [{ username }, { email }],
+    },
+  });
 
-  if (existing.length > 0) {
+  if (existingUser) {
     return res.status(409).json({ error: "Usuário ou e-mail já cadastrado." });
   }
 
   const passwordHash = await bcrypt.hash(password, 10);
-  const [result] = await db.query(
-    "INSERT INTO users (username, email, name, password_hash) VALUES (?, ?, ?, ?)",
-    [username, email, name, passwordHash],
-  );
 
-  const userId = result.insertId;
-
-  await db.query("INSERT INTO settings (user_id) VALUES (?)", [userId]);
-
-  const tasks = [
-    ["Primeira tarefa do Pomodoro"],
-    ["Ajustar seu tempo de focagem"],
-    ["Experimentar o ciclo 25/5"],
-  ];
-
-  await db.query("INSERT INTO tasks (user_id, title) VALUES ? ", [
-    tasks.map(([title]) => [userId, title]),
-  ]);
+  await prisma.user.create({
+    data: {
+      username,
+      email,
+      name,
+      passwordHash,
+      settings: {
+        create: {},
+      },
+      tasks: {
+        create: [
+          { title: "Primeira tarefa do Pomodoro" },
+          { title: "Ajustar seu tempo de focagem" },
+          { title: "Experimentar o ciclo 25/5" },
+        ],
+      },
+    },
+  });
 
   return res.status(201).json({ message: "Usuário registrado com sucesso." });
 });
@@ -181,18 +118,17 @@ app.post("/api/auth/login", async (req, res) => {
     return res.status(400).json({ error: "Usuário e senha são obrigatórios." });
   }
 
-  const [rows] = await db.query(
-    "SELECT id, username, name, password_hash FROM users WHERE username = ? OR email = ?",
-    [username, username],
-  );
-
-  const user = rows[0];
+  const user = await prisma.user.findFirst({
+    where: {
+      OR: [{ username }, { email: username }],
+    },
+  });
 
   if (!user) {
     return res.status(401).json({ error: "Usuário ou senha inválidos." });
   }
 
-  const isPasswordValid = await bcrypt.compare(password, user.password_hash);
+  const isPasswordValid = await bcrypt.compare(password, user.passwordHash);
 
   if (!isPasswordValid) {
     return res.status(401).json({ error: "Usuário ou senha inválidos." });
@@ -201,27 +137,25 @@ app.post("/api/auth/login", async (req, res) => {
   const token = createToken(user);
   sendAuthCookie(res, token);
 
-  return res.json({
-    user: { id: user.id, username: user.username, name: user.name },
-  });
+  return res.json({ user: { id: user.id, username: user.username, name: user.name } });
 });
 
 app.post("/api/auth/logout", (req, res) => {
   res.clearCookie(authCookieName);
-  res.json({ message: "Logout realizado com sucesso." });
+  return res.json({ message: "Logout realizado com sucesso." });
 });
 
 app.get("/api/auth/me", authenticate, async (req, res) => {
-  const [rows] = await db.query(
-    "SELECT id, username, name, email FROM users WHERE id = ?",
-    [req.user.userId],
-  );
+  const user = await prisma.user.findUnique({
+    where: { id: req.user.userId },
+    select: { id: true, username: true, name: true, email: true },
+  });
 
-  if (!rows.length) {
+  if (!user) {
     return res.status(401).json({ error: "Usuário não encontrado." });
   }
 
-  return res.json({ user: rows[0] });
+  return res.json({ user });
 });
 
 app.post("/api/auth/forgot-password", async (req, res) => {
@@ -231,11 +165,9 @@ app.post("/api/auth/forgot-password", async (req, res) => {
     return res.status(400).json({ error: "E-mail é obrigatório." });
   }
 
-  const [rows] = await db.query("SELECT id FROM users WHERE email = ?", [
-    email,
-  ]);
+  const user = await prisma.user.findUnique({ where: { email } });
 
-  if (!rows.length) {
+  if (!user) {
     return res.json({
       message:
         "Se o e-mail existir no sistema, um token de recuperação foi gerado. Verifique a tela de redefinição.",
@@ -245,15 +177,17 @@ app.post("/api/auth/forgot-password", async (req, res) => {
   const resetToken = crypto.randomBytes(24).toString("hex");
   const resetTokenExpires = new Date(Date.now() + 60 * 60 * 1000);
 
-  await db.query(
-    "UPDATE users SET reset_token = ?, reset_token_expires = ? WHERE id = ?",
-    [resetToken, resetTokenExpires, rows[0].id],
-  );
+  await prisma.user.update({
+    where: { email },
+    data: {
+      resetToken,
+      resetTokenExpires,
+    },
+  });
 
   return res.json({
     message: "Token de recuperação criado com sucesso.",
     resetToken,
-    resetLink: `${CLIENT_URL}/?resetToken=${resetToken}`,
   });
 });
 
@@ -261,35 +195,41 @@ app.post("/api/auth/reset-password", async (req, res) => {
   const { token, password } = req.body;
 
   if (!token || !password) {
-    return res
-      .status(400)
-      .json({ error: "Token e nova senha são obrigatórios." });
+    return res.status(400).json({ error: "Token e nova senha são obrigatórios." });
   }
 
-  const [rows] = await db.query(
-    "SELECT id FROM users WHERE reset_token = ? AND reset_token_expires > NOW()",
-    [token],
-  );
+  const user = await prisma.user.findFirst({
+    where: {
+      resetToken: token,
+      resetTokenExpires: {
+        gte: new Date(),
+      },
+    },
+  });
 
-  if (!rows.length) {
+  if (!user) {
     return res.status(400).json({ error: "Token inválido ou expirado." });
   }
 
   const passwordHash = await bcrypt.hash(password, 10);
 
-  await db.query(
-    "UPDATE users SET password_hash = ?, reset_token = NULL, reset_token_expires = NULL WHERE id = ?",
-    [passwordHash, rows[0].id],
-  );
+  await prisma.user.update({
+    where: { id: user.id },
+    data: {
+      passwordHash,
+      resetToken: null,
+      resetTokenExpires: null,
+    },
+  });
 
   return res.json({ message: "Senha redefinida com sucesso." });
 });
 
 app.get("/api/tasks", authenticate, async (req, res) => {
-  const [tasks] = await db.query(
-    "SELECT id, title, completed FROM tasks WHERE user_id = ? ORDER BY created_at DESC",
-    [req.user.userId],
-  );
+  const tasks = await prisma.task.findMany({
+    where: { userId: req.user.userId },
+    orderBy: { createdAt: "desc" },
+  });
 
   return res.json({ tasks });
 });
@@ -301,62 +241,68 @@ app.post("/api/tasks", authenticate, async (req, res) => {
     return res.status(400).json({ error: "Título da tarefa é obrigatório." });
   }
 
-  await db.query("INSERT INTO tasks (user_id, title) VALUES (?, ?)", [
-    req.user.userId,
-    title,
-  ]);
+  const task = await prisma.task.create({
+    data: {
+      title,
+      user: { connect: { id: req.user.userId } },
+    },
+  });
 
-  return res.status(201).json({ message: "Tarefa criada." });
+  return res.status(201).json({ task });
 });
 
 app.put("/api/tasks/:id", authenticate, async (req, res) => {
-  const { id } = req.params;
+  const taskId = Number(req.params.id);
 
-  const [rows] = await db.query(
-    "SELECT id, completed FROM tasks WHERE id = ? AND user_id = ?",
-    [id, req.user.userId],
-  );
+  const task = await prisma.task.findFirst({
+    where: { id: taskId, userId: req.user.userId },
+  });
 
-  if (!rows.length) {
+  if (!task) {
     return res.status(404).json({ error: "Tarefa não encontrada." });
   }
 
-  await db.query("UPDATE tasks SET completed = ? WHERE id = ?", [
-    rows[0].completed ? 0 : 1,
-    id,
-  ]);
+  const updatedTask = await prisma.task.update({
+    where: { id: taskId },
+    data: { completed: !task.completed },
+  });
 
-  return res.json({ message: "Tarefa atualizada." });
+  return res.json({ task: updatedTask });
 });
 
 app.get("/api/settings", authenticate, async (req, res) => {
-  const [rows] = await db.query(
-    "SELECT focus_minutes AS focusMinutes, break_minutes AS breakMinutes, long_break_minutes AS longBreakMinutes, notifications_enabled AS notificationsEnabled FROM settings WHERE user_id = ?",
-    [req.user.userId],
-  );
+  const settings = await prisma.setting.findUnique({
+    where: { userId: req.user.userId },
+  });
 
-  return res.json({ settings: rows[0] || null });
+  if (!settings) {
+    return res.status(404).json({ error: "Configurações não encontradas." });
+  }
+
+  return res.json({ settings });
 });
 
 app.put("/api/settings", authenticate, async (req, res) => {
-  const { focusMinutes, breakMinutes, longBreakMinutes, notificationsEnabled } =
-    req.body;
+  const { focusMinutes, breakMinutes, longBreakMinutes, notificationsEnabled } = req.body;
 
-  await db.query(
-    "UPDATE settings SET focus_minutes = ?, break_minutes = ?, long_break_minutes = ?, notifications_enabled = ? WHERE user_id = ?",
-    [
-      focusMinutes ?? 25,
-      breakMinutes ?? 5,
-      longBreakMinutes ?? 15,
-      notificationsEnabled ? 1 : 0,
-      req.user.userId,
-    ],
-  );
+  const settings = await prisma.setting.update({
+    where: { userId: req.user.userId },
+    data: {
+      focusMinutes: focusMinutes ?? undefined,
+      breakMinutes: breakMinutes ?? undefined,
+      longBreakMinutes: longBreakMinutes ?? undefined,
+      notificationsEnabled: notificationsEnabled ?? undefined,
+    },
+  });
 
-  return res.json({ message: "Configurações atualizadas." });
+  return res.json({ settings });
+});
+
+app.use((err, req, res, next) => {
+  console.error(err);
+  res.status(500).json({ error: "Erro interno do servidor." });
 });
 
 app.listen(Number(PORT), () => {
-  // eslint-disable-next-line no-console
-  console.log(`API Chronos rodando em http://localhost:${PORT}`);
+  console.log(`Servidor iniciado na porta ${PORT}`);
 });
