@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Pomodoro Login</title>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <div class="page">
+      <section class="hero">
+        <div class="hero__content">
+          <span class="hero__tag">Pomodoro</span>
+          <h1>Foque no seu tempo e cumpra suas metas</h1>
+          <p>
+            Organize ciclos de trabalho e descanso com um login rápido e um
+            visual limpo para sua rotina de estudos.
+          </p>
+        </div>
+      </section>
+
+      <main class="login-card">
+        <div class="login-card__header">
+          <div class="brand">
+            <span class="brand__dot"></span>
+            <strong>Chronos</strong>
+          </div>
+          <p>Faça login para começar a criar suas sessões Pomodoro.</p>
+        </div>
+
+        <form id="loginForm" class="login-form" novalidate>
+          <label for="email">E-mail</label>
+          <input id="email" type="email" placeholder="seu@email.com" required />
+          <p class="input-error" id="emailError"></p>
+
+          <label for="password">Senha</label>
+          <input
+            id="password"
+            type="password"
+            placeholder="Digite sua senha"
+            minlength="6"
+            required
+          />
+          <p class="input-error" id="passwordError"></p>
+
+          <button type="submit">Entrar</button>
+        </form>
+
+        <div class="login-card__footer">
+          <a href="#">Esqueci minha senha</a>
+          <span>Não tem conta? <a href="#">Cadastre-se</a></span>
+        </div>
+
+        <div class="login-alert" id="loginAlert"></div>
+      </main>
+    </div>
+
+    <script src="script.js"></script>
+  </body>
+</html>
