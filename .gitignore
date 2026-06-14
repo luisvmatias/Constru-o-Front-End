@@ -1,0 +1,12 @@
+# Node modules
+node_modules/
+
+# Backend local environment
+backend/.env
+
+# Frontend local environment
+projeto-pomodoro/chronos-pomodoro/.env
+
+# Package lock for backend is tracked, but local IDE files are not
+*.log
+.DS_Store

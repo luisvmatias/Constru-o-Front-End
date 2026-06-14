@@ -1,0 +1,41 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id                Int       @id @default(autoincrement())
+  username          String    @unique
+  email             String    @unique
+  name              String
+  passwordHash      String    @map("password_hash")
+  resetToken        String?   @map("reset_token")
+  resetTokenExpires DateTime? @map("reset_token_expires")
+  createdAt         DateTime  @default(now()) @map("created_at")
+  settings          Setting?  @relation("UserSetting")
+  tasks             Task[]
+}
+
+model Setting {
+  id                  Int      @id @default(autoincrement())
+  userId              Int      @unique @map("user_id")
+  focusMinutes        Int      @default(25) @map("focus_minutes")
+  breakMinutes        Int      @default(5) @map("break_minutes")
+  longBreakMinutes    Int      @default(15) @map("long_break_minutes")
+  notificationsEnabled Boolean  @default(true) @map("notifications_enabled")
+  updatedAt           DateTime @updatedAt @map("updated_at")
+  user                User     @relation("UserSetting", fields: [userId], references: [id])
+}
+
+model Task {
+  id        Int      @id @default(autoincrement())
+  userId    Int      @map("user_id")
+  title     String
+  completed Boolean  @default(false)
+  createdAt DateTime @default(now()) @map("created_at")
+  user      User     @relation(fields: [userId], references: [id])
+}
